@@ -4,9 +4,9 @@
 library(readxl)
 library(DataExplorer)
 library(dplyr)
+library(lubridate)
 
 data <- read_excel("jysk_case_competition_final.xlsx")
-View(data)
 colnames(data)
 
 # > colnames(data)
@@ -36,10 +36,8 @@ sum(is.na(data))
 
 str(data)
 
-# Load dplyr
-library(dplyr)
-
-data <- mutate(data, date = as.Date(date, format = "%m.%d.%Y"))
+data <- data %>%
+  mutate(date = dmy(date)) 
 
 t(names(data))
 
@@ -50,5 +48,10 @@ for (i in colnames(data)[c(4, 7:9)]) {
 str(data)
 
 dim(data)
+
+
+
+
+
 
 
