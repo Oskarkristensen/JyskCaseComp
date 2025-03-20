@@ -39,6 +39,8 @@ str(data)
 data <- data %>%
   mutate(date = dmy(date)) 
 
+data <- data %>% filter(order_value_ex_vat_ex_freight > 0)
+
 t(names(data))
 
 for (i in colnames(data)[c(4, 7:9)]) {
@@ -48,10 +50,3 @@ for (i in colnames(data)[c(4, 7:9)]) {
 str(data)
 
 dim(data)
-
-
-
-
-
-
-
