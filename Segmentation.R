@@ -12,6 +12,10 @@ colnames(data)
 
 sum(is.na(data))
 
+data$product_group_level_1 <- as.character(data$product_group_level_1)
+data$product_group_level_1[data$product_group_level_1 == "Bed linen"] <- "Bed Linen"
+data$product_group_level_1 <- as.factor(data$product_group_level_1)
+
 # > sum(is.na(data))
 # [1] 54766
 
@@ -161,14 +165,14 @@ rfm_plot_median_frequency(segment, sort=TRUE, axis_label_size = 12)
 rfm_plot_median_monetary(segment, sort=TRUE, axis_label_size = 12)
 
 # _________________________________________________________________
-# Cluster Analysis - Hierarchical
+# Cluster Analysis 
 # _________________________________________________________________
+
+#Data preparation
+#_______________________________________________________________________________
 
 #To do the cluster analysis, we are using the columns recency, frequency and monetary
 #from the RFM analysis 
-
-colnames(rfm_result)
-colnames(rfm_result$rfm)
 
 # Create dataset for clustering
 rfm_cluster_data <- rfm_result$rfm %>%
@@ -179,56 +183,54 @@ rfm_cluster_data <- rfm_result$rfm %>%
     monetary = sum(amount)  # total spend
   )
 
-str(rfm_cluster_data)
-
-#Data preparation
-#_______________________________________________________________________________
-prep <- nrow(rfm_cluster_data) #stores number of of rows in dataset
+#Making a smaller sample for computional reasons, setting seed for reproducibility
+set.seed(123)  
+rfm_cluster_data_small <- rfm_cluster_data %>%
+  sample_n(50000)
 
 #Choosing variables for the cluster analysis and summarize them
 rfm_cluster <- c("recency","frequency","monetary")
-summary(rfm_cluster_data[,rfm_cluster])
+summary(rfm_cluster_data_small[,rfm_cluster])
 
 #Computes standard deviation for each variable
-apply(rfm_cluster_data[,rfm_cluster],2,sd)
+apply(rfm_cluster_data_small[,rfm_cluster],2,sd)
 
 #Checking for multicollinarity
-cor(rfm_cluster_data[,rfm_cluster])
+cor(rfm_cluster_data_small[,rfm_cluster])
 #Highest multicollinaruty is between frequency and monetary 
-#Is 41% which is okay
+#Is 48.79% which is okay
 
 #Looking for outliers 
 # Compute Euclidean distance from the mean for each customer
-dev <- t(t(rfm_cluster_data[, rfm_cluster]) - apply(rfm_cluster_data[, rfm_cluster], 2, mean))
+dev <- t(t(rfm_cluster_data_small[, rfm_cluster]) - apply(rfm_cluster_data_small[, rfm_cluster], 2, mean))
 dev2 <- dev^2
 sumdev2 <- rowSums(dev2)
 distances <- sqrt(sumdev2)
 
-# Add distances to the original data
-rfm_cluster_data$distance <- distances
+#Add distances back to data
+rfm_cluster_data_small$distance <- distances
 
-# Sort by descending distance and show top customers
-outliers <- rfm_cluster_data %>%
+#Show top 10 outliers
+outliers <- rfm_cluster_data_small %>%
   arrange(desc(distance)) %>%
   select(customer_id, distance, recency, frequency, monetary)
 
-# Show top 10 potential outliers
-head(outliers, 10) %>%
+head(outliers, 10) %>% 
   kable() %>%
   kable_classic_2()
 
-#10 outliers are deleted
-rfm_cluster_data <- subset(rfm_cluster_data,customer_id!="1018127357"&customer_id!="10185455"
-                           &customer_id!="101829177"&customer_id!="101879163"&customer_id!="101830099"&
-                           customer_id!="101825776"&customer_id!="101818399"&customer_id!="101824856"&
-                           customer_id!="1018125720"&customer_id!="101818984")
-nobs <- nrow(rfm_cluster_data)
-rfm_cluster_data$customer_id <- seq(1,nobs)
+#Top 10 outliers are deleted
+rfm_cluster_data_small <- subset(rfm_cluster_data_small,customer_id!="101879163"&customer_id!="101830099"
+                            &customer_id!="101825776"&customer_id!="101824856"&customer_id!="1018125720"&
+                              customer_id!="101820176"&customer_id!="10186418"&customer_id!="101844328"&
+                              customer_id!="101820730"&customer_id!="101829249")
+nobs <- nrow(rfm_cluster_data_small)
+rfm_cluster_data_small$customer_id <- seq(1,nobs)
 
 ## Hierarchical clustering
 #Create distance matrix
-dmat <- dist(rfm_cluster_data[, rfm_cluster], method = "euclidean")
-dist2 <- dmat^2
+dist <- dist(rfm_cluster_data_small[, rfm_cluster], method = "euclidean")
+dist2 <- dist^2
 
 #Using wards method
 H.fit <- hclust(dist2,method="ward.D")
@@ -251,10 +253,10 @@ table(grp)
 rect.hclust(H.fit,k=4,border="red")
 
 #Assess outcome
-aggregate(rfm_cluster_data[,rfm_cluster],list(grp),mean)
-summary(aov(recency~grp,data=rfm_cluster_data))
-summary(aov(frequency~grp,data=rfm_cluster_data))
-summary(aov(monetary~grp,data=rfm_cluster_data))
+aggregate(rfm_cluster_data_small[,rfm_cluster],list(grp),mean)
+summary(aov(recency~grp,data=rfm_cluster_data_small))
+summary(aov(frequency~grp,data=rfm_cluster_data_small))
+summary(aov(monetary~grp,data=rfm_cluster_data_small))
 
 #Complete linkage
 H.fit <- hclust(dmat,method="complete")
@@ -277,13 +279,14 @@ table(grp)
 rect.hclust(H.fit,k=4,border="red")
 
 #Assess outcome
-aggregate(rfm_cluster_data[,rfm_cluster],list(grp),mean)
-summary(aov(recency~grp,data=rfm_cluster_data))
-summary(aov(frequency~grp,data=rfm_cluster_data))
-summary(aov(monetary~grp,data=rfm_cluster_data))
+aggregate(rfm_cluster_data_small[,rfm_cluster],list(grp),mean)
+summary(aov(recency~grp,data=rfm_cluster_data_small))
+summary(aov(frequency~grp,data=rfm_cluster_data_small))
+summary(aov(monetary~grp,data=rfm_cluster_data_small))
 
 #Using NbClust
-res <- NbClust(rfm_cluster_data[,rfm_cluster], distance = "euclidean", min.nc=2, max.nc=8, 
+library(NbClust)
+res <- NbClust(rfm_cluster_data_small[,rfm_cluster], distance = "euclidean", min.nc=2, max.nc=8, 
              method = "ward.D", index = "all")
 res$All.index
 res$Best.nc
