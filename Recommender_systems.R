@@ -56,7 +56,7 @@ library(tidyr)
 
 #Sample på 10.000 er MAKS!!!
 data_small <- data %>%
-  sample_n(10000)
+  sample_n(20000)
 
 # value.var indikere om der har været et køb eller ej, og det bliver så lavet om til binære værdier
 data_mat <- dcast(data_small, customer_id ~ product_title, value.var = "order_value_ex_vat_ex_freight", fill = 0)
@@ -117,7 +117,7 @@ rates1 <- rates[rowCounts(rates) > 5,] # OBS: Problem med den her!!!!
 # rates og rates 1 er relevant at kigge på top 20 ggplot ovenover, hvad er bedst at sætte colcounts til?
 
 set.seed(123)
-scheme <- evaluationScheme(rates1, method = "split", train = 0.8, given = 15)
+scheme <- evaluationScheme(rates1, method = "split", train = 0.8, given = 5)
 
 train_data <- getData(scheme, "train")
 
@@ -146,7 +146,7 @@ recommenderRegistry$get_entries(dataType="binaryRatingMatrix")
 recommender_models <- recommenderRegistry$get_entries(dataType="binaryRatingMatrix")
 names(recommender_models)
 lapply(recommender_models,"[[","description")
-recommender_models$IBCF_binaryRatingMatrix$parameters
+recommender_models$RANDOM_binaryRatingMatrix
 
 ## Item-based CF
 # IBCF: Item-based collaborative filtering
@@ -168,20 +168,59 @@ recc_matrix <- lapply(recc_predicted@items, function(x){
 })
 # Let's take a look the recommendations for the first four users:
 recc_matrix[1:4]
+# output
+#$`0`
+#[1] "Height adj. desk SVANEKE 60x120 white" "Mirror MARSTAL Ø70 black"             
+#[3] "Shoe tray FRYNSEEG 38x75x3 black"      "Sideboard MARKSKEL 3 doors white/oak" 
+#[5] "SM 160x200cm NORDELVA GS120 DREAMZONE"
+
+#$`1`
+#[1] "Air bed BREDENG 94x198xH39/46"      "Armchair GEDVED grey"               "Armchair LISELEJE high natural"    
+#[4] "Armchair ONSEVIG velvet grey/black" "Armchair UDSBJERG grey"            
+
+#$`2`
+#[1] "Air bed BREDENG 94x198xH39/46"      "Armchair GEDVED grey"               "Armchair LISELEJE high natural"    
+#[4] "Armchair ONSEVIG velvet grey/black" "Armchair UDSBJERG grey"            
+
+#$`3`
+#[1] "Air bed BREDENG 94x198xH39/46"      "Armchair GEDVED grey"               "Armchair LISELEJE high natural"    
+#[4] "Armchair ONSEVIG velvet grey/black" "Armchair UDSBJERG grey" 
+
+
 
 ## User-based CF
 # UBCF = User-based collaborative filtering
 # The method computes the similarity between users with cosine
 # Let's build a recommender model leaving the parameters to their defaults. 
-recc_model <- Recommender(data = recc_data_train, method = "UBCF")
+recc_model <- Recommender(data = train_data, method = "UBCF")
 # A UBCF recommender has now been created
-recc_predicted <- predict(object = recc_model, newdata = recc_data_test, n = n_recommended)
+recc_predicted <- predict(object = recc_model, newdata = test_data, n = n_recommended)
 # Let's define a list with the recommendations to the test set users.
-recc_matrix <- sapply(recc_predicted@items, function(x) {
+recc_matrix <- lapply(recc_predicted@items, function(x) { ### OBS på den her var der normalt brugt sapply i stedet for lapply
   colnames(rates)[x]
 })
 # Again, let's look at the first four users
 recc_matrix[1:4]
+
+# Output
+#$`0`
+#[1] "TO MALUNG 50x100cm beige KR"           "Bar stool TAULOV grey/black"          
+#[3] "Dining chair JONSTRUP asphalt/oak"     "GT YSBY 30x50cm dark grey"            
+#[5] "Height adj. desk SVANEKE 60x120 white"
+
+#$`1`
+#[1] "BM Micro KARLSTAD Ø70cm natural KR"  "GT YSBY 30x50cm dusty blue"         
+#[3] "TO KARLSTAD 50x100cm grey KR"        "DCSS NELL Sateen DBL white KRONBORG"
+#[5] "Dining table RINGSTED Ø100 white"   
+
+#$`2`
+#[1] "Air bed BREDENG 156x201xH39/46"  "Armchair HUNDESTED off-white"    "Armchair THORUP beige/oak color"
+#[4] "Armchair UDSBJERG beige"         "Armchair VILDSUND off-white"    
+
+#$`3`
+#[1] "DUV 1260g ULVIK warm 180x200cm"          "PIL VANSE foam 30x47x9/7cm"             
+#[3] "SM 160x200cm HORKA PS50 white DREAMZONE" "TO YSBY 50x90cm white"                  
+#[5] "Bookcase GISLINGE 5 shelves white" 
 
 
 ### step 5 - evaluation
@@ -190,38 +229,61 @@ recc_matrix[1:4]
 # We can split the data into some chunks, take a chunk out as the test set, and evaluate the accuracy. Then we can 
 # do the same with each other chunk and compute the average accuracy. Here we construct the evaluation model
 n_fold <- 4 
-rating_threshold <- 4 # threshold at which we consider the item to be good
-items_to_keep <- 5 # given=20 means that while testing the model use only 20 randomly picked ratings from every 
-# user to predict the unknown ratings in the test set the known data set has the ratings specified by given and the 
-# unknown data set the remaining ratings used for validation
+rating_threshold <- 1        # For binary data, good rating is simply 1
+items_to_keep <- 5           # Adjusted as needed for your data density
+
+# Create evaluation scheme for binary data
 eval_sets <- evaluationScheme(data = rates1, method = "cross-validation", k = n_fold, 
                               given = items_to_keep, goodRating = rating_threshold)
-size_sets <-sapply(eval_sets@runsTrain, length)
+size_sets <- sapply(eval_sets@runsTrain, length)
 size_sets
-#IBCF
+
+# IBCF model
 model_to_evaluate <- "IBCF"
-model_parameters <- NULL  #   we use the standard settings
-eval_recommender <-Recommender(data = getData(eval_sets, "train"), method = model_to_evaluate, parameter = model_parameters)
-# The IBCF can recommend new items and predict their ratings. In order to build 
-# the model, we need to specify how many items we want to recommend, for example, 5.
+model_parameters <- NULL
+eval_recommender <- Recommender(data = getData(eval_sets, "train"), method = model_to_evaluate, parameter = model_parameters)
+
 items_to_recommend <- 5
-# We can build the matrix with the predicted ratings using the predict function:
-eval_prediction <- predict(object = eval_recommender, newdata = getData(eval_sets, "known"), n = items_to_recommend, type = "ratings")
-# By using the calcPredictionAccuracy, we can calculate the Root mean square 
-# error (RMSE), Mean squared error (MSE), and the Mean absolute error (MAE).
-eval_accuracy <- calcPredictionAccuracy(
-  x = eval_prediction, data = getData(eval_sets, "unknown"), byUser = TRUE
-)
-# This is a small sample of the results for the Prediction and Accuracy
-head(eval_accuracy)
-# Now, let's take a look at the RMSE by each user
-ggplot(data=as.data.frame(eval_accuracy),aes(x=RMSE)) + geom_histogram(binwidth = 0.1) +
-  ggtitle("Distribution of the RMSE by user")
-# However, we need to evaluate the model as a whole, so we will set the byUser to False
-eval_accuracy <- calcPredictionAccuracy(
-  x = eval_prediction, data = getData(eval_sets, "unknown"), byUser = FALSE
-)
-eval_accuracy #for IBCF
+
+# Predict top-N recommendations (not ratings)
+eval_prediction <- predict(object = eval_recommender, newdata = getData(eval_sets, "known"), n = items_to_recommend, type = "topNList")
+
+# Now, instead of RMSE/MSE/MAE, consider calculating precision/recall etc.
+# For example, you could use the evaluate function to get these metrics:
+results <- evaluate(eval_sets, method = model_to_evaluate, n = items_to_recommend, parameter = model_parameters)
+avg_results <- avg(results)
+avg_results
+
+
+rec_list <- as(eval_prediction, "list")
+
+# Unlist to get a vector of all recommended items
+all_recs <- unlist(rec_list)
+
+# Create a data frame with counts for each product
+rec_freq <- as.data.frame(table(all_recs))
+colnames(rec_freq) <- c("Product", "Frequency")
+
+# Plot the frequency distribution of recommended products
+ggplot(rec_freq, aes(x = reorder(Product, -Frequency), y = Frequency)) +
+  geom_bar(stat = "identity") +
+  xlab("Product") +
+  ylab("Frequency of Recommendation") +
+  ggtitle("Frequency of Recommended Products") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Filter to the top 10 recommended products by frequency
+top10 <- rec_freq[order(rec_freq$Frequency, decreasing = TRUE), ][1:10, ]
+
+# Plot the frequency distribution for the top 10 products
+ggplot(top10, aes(x = reorder(Product, -Frequency), y = Frequency)) +
+  geom_bar(stat = "identity") +
+  xlab("Product") +
+  ylab("Frequency of Recommendation") +
+  ggtitle("Top 10 Recommended Products") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
 
 ## Evaluation of IBCF top-N
 # Confusion matrix good threshold =4
@@ -251,10 +313,8 @@ plot(results, annotate = TRUE, main = "ROC curve")
 plot(results, "prec/rec", annotate = TRUE, main = "Precision-Recall")
 
 ## Comparing models
-models_to_evaluate <- list(IBCF_cos = list(name = "IBCF", param = list(method = "cosine")), 
-                           IBCF_cor = list(name = "IBCF", param = list(method = "pearson")), 
-                           UBCF_cos = list(name = "UBCF", param = list(method = "cosine")), 
-                           UBCF_cor = list(name = "UBCF", param = list(method = "pearson")), 
+models_to_evaluate <- list(IBCF_cos = list(name = "IBCF", param = list(method = "Jaccard")), 
+                           UBCF_cos = list(name = "UBCF", param = list(method = "jaccard")), 
                            random = list(name = "RANDOM", param = NULL))
 # In order to evaluate the models, we need to test them, varying the number of items.
 n_recommendations <- c(1,5,seq(10,100,10))
@@ -267,6 +327,8 @@ title("ROC curve")
 plot(list_results, "prec/rec", annotate = 1, legend = "bottomright", ylim = c(0,0.4))
 title("Precision-recall")
 
+
+###------ Mangler at gå igennem  alt under det her --------
 library(recommenderlab)
 library(tidyverse)
 
