@@ -1,6 +1,5 @@
 # Market Basket Analysis (Association Rules)
 
-
 # Load packages
 library(readxl)
 library(plyr)
@@ -299,6 +298,15 @@ head(rule_summary_sorted, 21)
 # TO MALUNG 50x100 in cream. This is a clear behavioral pattern that could inform in-store product placement,
 # suggesting that these items should be displayed near each other.
 
+# We have been using the Apriori algorithm, which is a standard technique in Market Basket Analysis (MBA). 
+# We have grouped products by order_id to simulate baskets, which is an approach that will scale well as 
+# more products (orders) come in. This algorithm easily adopts to more transaction data. New rules may 
+# enter, while others may be dropped. We have already defined support, confidence and maxlen, however, 
+# these can be easily tuned based on new data. As new rules will be found and ranked in the future, 
+# they can easily be checked in our visual layout, and put into marketing or in-store plans. With small 
+# adjustments Jysk can use real margin data instead of simulated data, which will increase the effects on
+# campaign decisions, product placements and online recommendations. 
+
 # Overall, these rules provide important insights for store layout design, online recommendation systems, 
 # and customer behavior analysis. Additionally, all rules have positive total margins, meaning that every 
 # combination contributes to increased revenue when the items are sold together rather than individually.
@@ -314,7 +322,16 @@ head(rule_summary_sorted, 21)
 # It is important to note that these margins are based on simulated data. In a real-world implementation, 
 # actual cost and pricing data should be used to ensure accurate financial insights and actionable impact.
 # However they provide a "score" that gives a relative idea of the profitability, and we use them here
-# to rank the rules quickly. 
+# to rank the rules quickly. For decision-makers in store or for the marketing team, we have created at the 
+# bottom a custom score for each rule based on the impact it will have on profit considering the lift. 
+# This will help visualize the best valuable rules this analysis have found. 
+
+# The rules identify profitable product combinations. Recommending these together can potentially increase
+# the average basket size, as customers may be encouraged to buy more items in a single transaction. 
+
+# This MBA shows insigths in which products are bought together in the same transaction. To boost repurchase 
+# rate, Jysk can use these insigths for follow up recommendations. If the customer in the spring bought new 
+# towels, Jysk can recommend replacements after x number of months. 
 
 # Lets interpret the next two ones:
 # In 52% (confidence=0.526) of cases where someone bought the MALUNG 70x140 in grey, they also buy the matching 
@@ -327,3 +344,45 @@ head(rule_summary_sorted, 21)
 # This rule occurs in 0.0663% of all transactions. The smaller NORA size is 304 times more likely to be 
 # purchased when the bigger size is bought compared to chance. The combined margin of the two items is about 
 # 114%. 
+
+
+# Custom score list
+
+# Create a custom business impact score
+rule_summary$Business_Score <- rule_summary$Lift * rule_summary$Total_Margin
+
+# Sort by Business Score
+top_rules <- rule_summary %>%
+  arrange(desc(Business_Score)) %>%
+  select(Rule, Lift, Total_Margin, Business_Score) %>%
+  head(10)
+
+# Print the top 10 rules 
+print(top_rules)
+#                                                                         Rule   Lift Total_Margin Business_Score
+#1              {BT MALUNG 70x140cm cream KR} => {TO MALUNG 50x100cm cream KR} 380.12       1.4130       537.1096
+#2                  {BT NORA 70x140cm white KR} => {TO NORA 50x100cm white KR} 304.06       1.1445       347.9967
+#3                {BT MALUNG 70x140cm grey KR} => {TO MALUNG 50x100cm grey KR} 247.78       1.1476       284.3523
+#4  {End table TAPS 40x40 white/bamboo} => {End table TAPS 55x55 white/bamboo} 326.47       0.7316       238.8455
+#5      {BT MALUNG 70x140cm dark grey KR} => {TO MALUNG 50x100cm dark grey KR} 257.78       0.9262       238.7558
+#6        {BT NORA 70x140cm dusty blue KR} => {TO NORA 50x100cm dusty blue KR} 281.40       0.7200       202.6080
+#7           {TO MALUNG 50x100cm dark grey KR} => {TO MALUNG 50x100cm grey KR} 191.38       1.0477       200.5088
+#8              {TO MALUNG 50x100cm cream KR} => {TO MALUNG 50x100cm beige KR} 236.17       0.7413       175.0728
+#9                 {BT YSBY 65x130cm dark grey} => {TO YSBY 50x90cm dark grey} 309.87       0.4915       152.3011
+#s10         {TO MALUNG 50x100cm dark grey KR} => {TO MALUNG 50x100cm beige KR} 191.69       0.7232       138.6302
+
+# plot of the 10 most valuable rules for decision makers
+library(gt)
+
+top_rules %>%
+  gt() %>%
+  data_color(
+    columns = vars(Business_Score),
+    colors = scales::col_numeric("Blues", domain = NULL)
+  ) %>%
+  tab_header(
+    title = "Top 10 Most Valuable Rules",
+    subtitle = "Based on Combined Lift × Margin Score"
+  )
+
+
