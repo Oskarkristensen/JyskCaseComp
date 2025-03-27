@@ -1,114 +1,165 @@
+#_______________________________________________________________________________
+#CASE COMPETITION: S360 X JYSK 
+#_______________________________________________________________________________
+
+###------ Data Cleaning -----
+library(readxl)
+library(DataExplorer)
+library(dplyr)
+library(lubridate)
+setwd("/Users/oskar/Documents/UNI/8. Semester/Customer Analytics/Jysk Case Competition")
+
+data <- read_excel("jysk_case_competition_final.xlsx")
+colnames(data)
+
+sum(is.na(data))
+
+data$product_group_level_1 <- as.character(data$product_group_level_1)
+data$product_group_level_1[data$product_group_level_1 == "Bed linen"] <- "Bed Linen"
+data$product_group_level_1 <- as.factor(data$product_group_level_1)
+
+# > sum(is.na(data))
+# [1] 54766
+
+plot_missing(data)
+#Due to low percentage of missing values, rows with missing values will be removed 
+
+data <- na.omit(data)
+
+str(data)
+
+data <- data %>%
+  mutate(date = dmy(date)) 
+
+data <- data %>% filter(order_value_ex_vat_ex_freight > 0)
+
+t(names(data))
+
+for (i in colnames(data)[c(4, 6:9)]) {
+  data[[i]] <- as.factor(data[[i]])  
+}
+
+data$customer_id <- as.character(data$customer_id)
+
+str(data)
+
+dim(data)
+
+
+###------- Recomenderlab, lav data om til binaryRatingMatrix -----------
+
 library(recommenderlab)
 library(tidyverse)
-
+library(reshape2)
 library(dplyr)
 library(tidyr)
-library(recommenderlab)
 
-# Aggregate the data to get one rating per customer-product pair
-rating_data <- data %>%
-  group_by(customer_id, product_title) %>%
-  summarise(rating = mean(order_value_ex_vat_ex_freight, na.rm = TRUE)) %>%
-  ungroup()
+#Sample på 10.000 er MAKS!!!
+data_small <- data %>%
+  sample_n(10000)
 
-library(Matrix)
-# Assuming you have a data frame 'rating_data' with columns: customer_id, product_id, rating
-# Create an index for customers and products
-customer_levels <- unique(rating_data$customer_id)
-product_levels  <- unique(rating_data$product_title)
-
-# Convert customer and product ids to factors with consistent levels
-rating_data$customer_id <- factor(rating_data$customer_id, levels = customer_levels)
-rating_data$product_id  <- factor(rating_data$product_title, levels = product_levels)
-
-# Create a sparse matrix: rows = customers, columns = products
-sparse_mat <- sparseMatrix(
-  i = as.integer(rating_data$customer_id),
-  j = as.integer(rating_data$product_id),
-  x = rating_data$rating,
-  dims = c(length(customer_levels), length(product_levels)),
-  dimnames = list(customer_levels, product_levels)
-)
-
-# Convert the sparse matrix to a realRatingMatrix
-library(recommenderlab)
-real_rating_matrix <- as(sparse_mat, "realRatingMatrix")
+# value.var indikere om der har været et køb eller ej, og det bliver så lavet om til binære værdier
+data_mat <- dcast(data_small, customer_id ~ product_title, value.var = "order_value_ex_vat_ex_freight", fill = 0)
 
 
-### Step 1 - storage
-data(MovieLense)
-help(MovieLense)
-class(MovieLense)
-dim(MovieLense)
-# Data is given in realRatingMatrix format  ; Optimized to store sparse matrices
-str(real_rating_matrix,vec.len=2) #not as we normally reference list elements by \\$ but \\@
-methods(class=class(real_rating_matrix)) # methods applicable to this class
+#Ændre række navn til customer_id for at lave en matrix og sletter den så bagefter. 
+rownames(data_mat) <- data_mat$customer_id
+data_mat$customer_id <- NULL
+
+#Konverter til binaryratingMatrix
+binary_data <- as(as.matrix(data_mat), "binaryRatingMatrix")
 
 
-### Step 2 - explore data
-## Loading the metadata that gets loaded with main dataset
-moviemeta <- MovieLenseMeta
-class(moviemeta)
-colnames(moviemeta)
 
-## What do we know about the films?
-library(pander)
-pander(head(moviemeta,2),caption = "First few Rows within Movie Meta Data ")
-# Look at the first few ratings of the first user
-head(as(MovieLense[1,], "list")[[1]])
-# Number of ratings per user
-hist(rowCounts(MovieLense))
-# Number of ratings per movie
-hist(colCounts(MovieLense))
-# Top 10 movies
+
+
+
+###---- Top 10 items bought, test for at se om man har fået nogle produkter som går igen ----
 items_bought <- data.frame(
-  prodcut_name = names(colCounts(real_rating_matrix)),
-  bought = colCounts(real_rating_matrix)
+  prodcut_name = names(colCounts(binary_data)),
+  bought = colCounts(binary_data)
 )
-top_ten_items <- items_bought[order(items_bought$prodcut_name, decreasing = TRUE), ][1:10, ] 
+top_ten_items <- items_bought[order(items_bought$bought, decreasing = TRUE), ][1:20, ] 
 # Plot top 10
 ggplot(top_ten_items) + aes(x=prodcut_name, y=bought) + 
   geom_bar(stat = "identity",fill = "firebrick4", color = "dodgerblue2") + xlab("Item Name") + ylab("Count") +
   theme(axis.text = element_text(angle = 40, hjust = 1)) 
+#----- Recommender Model ----
 
-## What do we know about the ratings
-summary(getRatings(real_rating_matrix))
-# Plot the ratings
-data.frame(ratings=getRatings(real_rating_matrix)) %>%
-  ggplot(aes(ratings)) + geom_bar(width=0.75)+
-  labs(title='items Ratings Distribution')
-plot(getRatings(real_rating_matrix))
+# Create a recommender model using Item-Based Collaborative Filtering with Jaccard similarity
+#Jaccard similarity bliver brugt fordi der er tale om implicit data, og jaccard kan læse på 
+#hvad der er købt af hvem og tage højde for det med binære tal.
+
+### Den her kode tager lang tid at kører, LAD VÆRE MED AT KØRE DEN HER KODE, 
+#brug koden længere nede som gør det på training set.
+#rec_model <- Recommender(binary_data, method = "IBCF", 
+#parameter = list(method = "Jaccard"))
+
+#Kode fra forelæsning
+#recommendations <- predict(rec_model, binary_data, n = 5)
+
+#recommendations@items[[1]]
+
+#recc_matrix <- lapply(recommendations@items, function(x){
+  #colnames(data_mat)[x]
+#})
+# Let's take a look the recommendations for the first four users:
+#recc_matrix[1:4]
+
+### Step 3 - split in training and test
+#Man kan ikke bruge den rates som bliver brugt under forelæsning igen fordi han kun bruger eksplicit data
+# given er hvor meget der skal holdes igen for testing 
+
+# Training and test set: At least 30 items evaluated or at least 100 users for each item
+rates <- binary_data[rowCounts(binary_data) > 5, colCounts(binary_data) > 10]
+rates1 <- rates[rowCounts(rates) > 5,] # OBS: Problem med den her!!!! 
+
+# rates og rates 1 er relevant at kigge på top 20 ggplot ovenover, hvad er bedst at sætte colcounts til?
+
+set.seed(123)
+scheme <- evaluationScheme(rates1, method = "split", train = 0.8, given = 15)
+
+train_data <- getData(scheme, "train")
+
+# And the test data (the "known" part is used as input for prediction)
+test_data <- getData(scheme, "known")
 
 ### Step 3 - split in training and test
 # Training and test set: At least 30 items evaluated or at least 100 users for each item
-rates <- real_rating_matrix[rowCounts(real_rating_matrix) > 5, colCounts(real_rating_matrix) > 50]
-rates1 <- rates[rowCounts(rates) > 5,]
+#rates <- binary_data[rowCounts(binary_data) > 5, colCounts(binary_data) > 10]
+#rates1 <- rates[rowCounts(rates) > 5,] # OBS: Problem med den her!!!! 
+
+# rates og rates 1 er relevant at kigge på top 20 ggplot ovenover, hvad er bedst at sætte colcounts til?
+
 # We randomly define the which_train vector that is True for users in the training set and FALSE for the others.
 # We will set the probability in the training set as 80%
-set.seed(1234)
-which_train <- sample(x = c(TRUE, FALSE), size = nrow(rates1), replace = TRUE, prob = c(0.8, 0.2))
+#set.seed(1234)
+#which_train <- sample(x = c(TRUE, FALSE), size = nrow(rates1), replace = TRUE, prob = c(0.8, 0.2))
 # Define the training and the test sets
-recc_data_train <- rates1[which_train, ]
-recc_data_test <- rates1[!which_train, ]
+#recc_data_train <- rates1[which_train, ]
+#recc_data_test <- rates1[!which_train, ]
 
 
 ### step 4 - recommendations
-## Get an overview of different recommender models
-recommenderRegistry$get_entries(dataType="realRatingMatrix")
-recommender_models <- recommenderRegistry$get_entries(dataType="realRatingMatrix")
+## Get an overview of different recommender models, skiftet ud så det passer med implicit rating
+recommenderRegistry$get_entries(dataType="binaryRatingMatrix")
+recommender_models <- recommenderRegistry$get_entries(dataType="binaryRatingMatrix")
 names(recommender_models)
 lapply(recommender_models,"[[","description")
-recommender_models$IBCF_realRatingMatrix$parameters
+recommender_models$IBCF_binaryRatingMatrix$parameters
 
 ## Item-based CF
 # IBCF: Item-based collaborative filtering
-# Let's build the recommender IBCF - cosine:
-recc_model <- Recommender(data = recc_data_train, method = "IBCF", parameter = list(k = 30)) 
+# Let's build the recommender IBCF:
+
+#Den her kode er den samme som ovenover, den her er bare omskrevet fra forelæsning, og tager kun training set.
+recc_model <- Recommender(data = train_data, method = "IBCF", parameter = list(method = "Jaccard")) 
+
 # We have now created a IBCF Recommender Model
 # We will define n_recommended that defines the number of items to recommend to 
 # each user and with the predict function, create prediction(recommendations) for the test set.
 n_recommended <- 5
-recc_predicted <- predict(object = recc_model, newdata = recc_data_test, n = n_recommended)
+recc_predicted <- predict(object = recc_model, newdata = test_data, n = n_recommended)
 # This is the recommendation for the first user
 recc_predicted@items[[1]]
 # Now let's define a list with the recommendations for each user
@@ -130,7 +181,7 @@ recc_matrix <- sapply(recc_predicted@items, function(x) {
   colnames(rates)[x]
 })
 # Again, let's look at the first four users
-recc_matrix[,1:4]
+recc_matrix[1:4]
 
 
 ### step 5 - evaluation
@@ -140,7 +191,7 @@ recc_matrix[,1:4]
 # do the same with each other chunk and compute the average accuracy. Here we construct the evaluation model
 n_fold <- 4 
 rating_threshold <- 4 # threshold at which we consider the item to be good
-items_to_keep <- 20 # given=20 means that while testing the model use only 20 randomly picked ratings from every 
+items_to_keep <- 5 # given=20 means that while testing the model use only 20 randomly picked ratings from every 
 # user to predict the unknown ratings in the test set the known data set has the ratings specified by given and the 
 # unknown data set the remaining ratings used for validation
 eval_sets <- evaluationScheme(data = rates1, method = "cross-validation", k = n_fold, 
