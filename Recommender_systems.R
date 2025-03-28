@@ -54,7 +54,7 @@ library(reshape2)
 library(dplyr)
 library(tidyr)
 
-#Sample på 10.000 er MAKS!!!
+#Sample på 20.000 er det højeste som er testet.
 data_small <- data %>%
   sample_n(20000)
 
@@ -107,12 +107,11 @@ ggplot(top_ten_items) + aes(x=prodcut_name, y=bought) +
 #recc_matrix[1:4]
 
 ### Step 3 - split in training and test
-#Man kan ikke bruge den rates som bliver brugt under forelæsning igen fordi han kun bruger eksplicit data
 # given er hvor meget der skal holdes igen for testing 
 
 # Training and test set: At least 30 items evaluated or at least 100 users for each item
 rates <- binary_data[rowCounts(binary_data) > 5, colCounts(binary_data) > 10]
-rates1 <- rates[rowCounts(rates) > 5,] # OBS: Problem med den her!!!! 
+rates1 <- rates[rowCounts(rates) > 5,] 
 
 # rates og rates 1 er relevant at kigge på top 20 ggplot ovenover, hvad er bedst at sætte colcounts til?
 
@@ -124,21 +123,6 @@ train_data <- getData(scheme, "train")
 # And the test data (the "known" part is used as input for prediction)
 test_data <- getData(scheme, "known")
 
-### Step 3 - split in training and test
-# Training and test set: At least 30 items evaluated or at least 100 users for each item
-#rates <- binary_data[rowCounts(binary_data) > 5, colCounts(binary_data) > 10]
-#rates1 <- rates[rowCounts(rates) > 5,] # OBS: Problem med den her!!!! 
-
-# rates og rates 1 er relevant at kigge på top 20 ggplot ovenover, hvad er bedst at sætte colcounts til?
-
-# We randomly define the which_train vector that is True for users in the training set and FALSE for the others.
-# We will set the probability in the training set as 80%
-#set.seed(1234)
-#which_train <- sample(x = c(TRUE, FALSE), size = nrow(rates1), replace = TRUE, prob = c(0.8, 0.2))
-# Define the training and the test sets
-#recc_data_train <- rates1[which_train, ]
-#recc_data_test <- rates1[!which_train, ]
-
 
 ### step 4 - recommendations
 ## Get an overview of different recommender models, skiftet ud så det passer med implicit rating
@@ -146,7 +130,7 @@ recommenderRegistry$get_entries(dataType="binaryRatingMatrix")
 recommender_models <- recommenderRegistry$get_entries(dataType="binaryRatingMatrix")
 names(recommender_models)
 lapply(recommender_models,"[[","description")
-recommender_models$RANDOM_binaryRatingMatrix
+recommender_models$ALS_implicit_binaryRatingMatrix
 
 ## Item-based CF
 # IBCF: Item-based collaborative filtering
@@ -192,15 +176,15 @@ recc_matrix[1:4]
 # UBCF = User-based collaborative filtering
 # The method computes the similarity between users with cosine
 # Let's build a recommender model leaving the parameters to their defaults. 
-recc_model <- Recommender(data = train_data, method = "UBCF")
+recc_model_UBCF <- Recommender(data = train_data, method = "UBCF")
 # A UBCF recommender has now been created
-recc_predicted <- predict(object = recc_model, newdata = test_data, n = n_recommended)
+recc_predicted_UBCF <- predict(object = recc_model, newdata = test_data, n = n_recommended)
 # Let's define a list with the recommendations to the test set users.
-recc_matrix <- lapply(recc_predicted@items, function(x) { ### OBS på den her var der normalt brugt sapply i stedet for lapply
+recc_matrix_UBCF <- lapply(recc_predicted@items, function(x) { ### OBS på den her var der normalt brugt sapply i stedet for lapply
   colnames(rates)[x]
 })
 # Again, let's look at the first four users
-recc_matrix[1:4]
+recc_matrix_UBCF[1:4]
 
 # Output
 #$`0`
@@ -229,8 +213,8 @@ recc_matrix[1:4]
 # We can split the data into some chunks, take a chunk out as the test set, and evaluate the accuracy. Then we can 
 # do the same with each other chunk and compute the average accuracy. Here we construct the evaluation model
 n_fold <- 4 
-rating_threshold <- 1        # For binary data, good rating is simply 1
-items_to_keep <- 5           # Adjusted as needed for your data density
+rating_threshold <- 1        # Binary (1/0)
+items_to_keep <- 5           # ændres efter behov
 
 # Create evaluation scheme for binary data
 eval_sets <- evaluationScheme(data = rates1, method = "cross-validation", k = n_fold, 
@@ -314,7 +298,8 @@ plot(results, "prec/rec", annotate = TRUE, main = "Precision-Recall")
 
 ## Comparing models
 models_to_evaluate <- list(IBCF_cos = list(name = "IBCF", param = list(method = "Jaccard")), 
-                           UBCF_cos = list(name = "UBCF", param = list(method = "jaccard")), 
+                           UBCF_cos = list(name = "UBCF", param = list(method = "jaccard")),
+                           ALS_cos = list(name = "ALS", param = NULL),
                            random = list(name = "RANDOM", param = NULL))
 # In order to evaluate the models, we need to test them, varying the number of items.
 n_recommendations <- c(1,5,seq(10,100,10))
@@ -382,10 +367,10 @@ plot(results, annotate=TRUE)
 plot(results, "prec/rec", annotate = TRUE, main = "Precision-Recall")
 
 recommender_ibcf <- Recommender(data = getData(eval_sets, "train"),
-                                method = "IBCF",parameter = list(method = "cosine"))
+                                method = "IBCF",parameter = list(method = "Jaccard"))
 
 recommender_ubcf <- Recommender(data = getData(eval_sets, "train"),
-                                method = "UBCF",parameter = list(method = "pearson"))
+                                method = "UBCF",parameter = list(method = "jaccard"))
 
 recommender_svd <- Recommender(data = getData(eval_sets, "train"),
                                method = "SVD",parameter = list(k=50))
